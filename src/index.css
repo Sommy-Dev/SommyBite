@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-page-bg text-text-primary font-body text-base leading-relaxed antialiased;
+  }
+  :where(h1, h2, h3, h4, h5, h6) {
+    @apply font-heading;
+  }
+  /* Visible 2px focus ring with 3:1 contrast against white canvas (WCAG 2.2 AA) */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-white;
+  }
+  ::selection {
+    @apply bg-orange-100 text-orange-900;
+  }
+}
+
+@layer components {
+  /* Skip link for keyboard users */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white;
+  }
+  /* Stitch-style safe-area bottom padding for mobile tab bar */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Respect reduced motion: nothing over 300ms becomes near-instant */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

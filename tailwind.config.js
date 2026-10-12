@@ -1,0 +1,80 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{vue,js}'],
+  theme: {
+    extend: {
+      colors: {
+        // SommyBite food-brand palette (Warm Culinary Modern)
+        primary: '#C2410C', // orange-700 — drives conversion / CTAs
+        'on-primary': '#ffffff',
+        'primary-container': '#ffdbd0',
+        'on-primary-container': '#ffece7',
+        'primary-fixed': '#ffdbd0',
+        'primary-fixed-dim': '#ffb59d',
+        'on-primary-fixed': '#390c00',
+        surface: '#f8f9fa',
+        'surface-container-lowest': '#ffffff',
+        'surface-container-low': '#f3f4f5',
+        'surface-container': '#edeeef',
+        'surface-container-high': '#e7e8e9',
+        'surface-container-highest': '#e1e3e4',
+        'surface-dim': '#d9dadb',
+        'page-bg': '#F9FAFB',
+        'on-surface': '#111827',
+        'text-primary': '#111827',
+        'text-secondary': '#4B5563',
+        'text-tertiary': '#9CA3AF',
+        'border-subtle': '#F3F4F6',
+        'border-default': '#E5E7EB',
+        'border-strong': '#D1D5DB',
+        'orange-50': '#FFF7ED',
+        'orange-100': '#FFEDD5',
+        'orange-700': '#C2410C',
+        'orange-800': '#9A3412',
+        'amber-100': '#FEF3C7',
+        'amber-500': '#F59E1B',
+        'amber-800': '#92400E',
+        'emerald-50': '#ECFDF5',
+        'emerald-600': '#059669',
+        'emerald-700': '#047857',
+        'sky-50': '#F0F9FF',
+        'sky-500': '#0EA5E9',
+        'sky-700': '#0369A1',
+        'red-50': '#FEF2F2',
+        'red-600': '#DC2626',
+        'red-700': '#B91C1C',
+      },
+      fontFamily: {
+        heading: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        body: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+      },
+      // Consistent food-photography crop: 4:3 on cards, 1:1 in cart
+      aspectRatio: {
+        '4/3': '4 / 3',
+        '1/1': '1 / 1',
+      },
+      keyframes: {
+        'fade-in': { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+        'toast-in': {
+          '0%': { opacity: '0', transform: 'translateY(8px) scale(0.98)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        'slide-in-right': { '0%': { transform: 'translateX(100%)' }, '100%': { transform: 'translateX(0)' } },
+        'slide-in-down': {
+          '0%': { opacity: '0', transform: 'translateY(-4px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'pulse-slow': { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.5' } },
+      },
+      animation: {
+        'fade-in': 'fade-in 200ms ease-out',
+        'toast-in': 'toast-in 200ms ease-out',
+        'slide-in-right': 'slide-in-right 200ms ease-out',
+        'slide-in-down': 'slide-in-down 150ms ease-out',
+        'pulse-slow': 'pulse-slow 2s ease-in-out infinite',
+      },
+    },
+  },
+  plugins: [],
+}

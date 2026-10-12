@@ -1,0 +1,6 @@
+
+> brand-name-food-store@1.0.0 preview
+> vite preview --port 5174 --strictPort
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5174[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.96.168.17:[1m5174[22m/[39m
