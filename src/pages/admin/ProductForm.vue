@@ -193,8 +193,13 @@ import Textarea from '../../components/Textarea.vue'
 import Switch from '../../components/Switch.vue'
 import Skeleton from '../../components/Skeleton.vue'
 import ErrorState from '../../components/ErrorState.vue'
-import * as api from '../../lib/api.js'
 import { toast, errorToast } from '../../store/toast.js'
+import {
+  adminGetProduct,
+  adminUpdateProduct,
+  adminCreateProduct,
+  listCategories,
+} from '../../lib/api.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -284,10 +289,10 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const cats = await api.listCategories()
+    const cats = await listCategories()
     categories.value = cats
     if (isEditing.value) {
-      const p = await api.getProduct(route.params.id)
+      const p = await adminGetProduct(route.params.id)
       form.value = {
         name: p.name,
         categoryId: p.categoryId,
@@ -405,9 +410,9 @@ async function save() {
   }
   try {
     if (isEditing.value) {
-      await api.updateProduct(route.params.id, payload)
+      await adminUpdateProduct(route.params.id, payload)
     } else {
-      await api.createProduct(payload)
+      await adminCreateProduct(payload)
     }
     dirty.value = false
     toast({ title: 'Product saved', tone: 'success', duration: 2600 })

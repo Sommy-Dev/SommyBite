@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { initAuth } from './store/auth.js'
 import './index.css'
 
 const app = createApp(App)
@@ -12,4 +13,6 @@ app.config.errorHandler = (err, _instance, info) => {
   console.error('[Vue error]', err, info)
 }
 
-app.mount('#app')
+// Restore the Supabase session (if any) before the first route resolves, so
+// guarded pages don't bounce to /auth while auth.user is still being loaded.
+initAuth().finally(() => app.mount('#app'))

@@ -55,7 +55,7 @@ router.beforeEach((to) => {
   }
   if (to.meta.requiresAdmin) {
     if (!auth.user) return { path: '/admin/login', query: { next: to.fullPath } }
-    if (auth.user.role !== 'admin') return { path: '/' }
+    if (auth.user.role !== 'admin') return { path: '/admin/login', query: { next: to.fullPath } }
   }
   if (to.path === '/admin/login' && auth.user?.role === 'admin') {
     return { path: '/admin' }

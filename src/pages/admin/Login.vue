@@ -42,7 +42,7 @@
             {{ formError }}
           </p>
 
-          <Button variant="primary" size="lg" class="w-full" :loading="busy" loading-label="Signing in">
+          <Button variant="primary" size="lg" type="submit" class="w-full" :loading="busy" loading-label="Signing in">
             Sign in to dashboard
           </Button>
         </form>
@@ -52,11 +52,6 @@
         <Icon name="lock" :size="14" />
         This area is protected. Never share your admin password.
       </p>
-
-      <div class="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-sm">
-        <p class="font-medium text-gray-700">Demo credentials</p>
-        <p class="mt-1 tabular-nums text-gray-500">admin@sommybite.com / admin1234</p>
-      </div>
     </div>
   </div>
 </template>
@@ -67,7 +62,8 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '../../components/Icon.vue'
 import Button from '../../components/Button.vue'
 import Input from '../../components/Input.vue'
-import { login } from '../../store/auth.js'
+import { login, logout } from '../../store/auth.js'
+import { supabaseConfigured } from '../../lib/supabase.js'
 import { toast } from '../../store/toast.js'
 
 const route = useRoute()
@@ -96,6 +92,11 @@ function validate(field) {
 
 async function submit() {
   formError.value = ''
+  if (!supabaseConfigured) {
+    formError.value =
+      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env, then restart the dev server.'
+    return
+  }
   let first = ''
   ;['email', 'password'].forEach((f) => {
     touched[f] = true
@@ -106,10 +107,14 @@ async function submit() {
 
   busy.value = true
   try {
+    // login() calls supabase.auth.signInWithPassword and reads the role from
+    // the profiles table (an own-row, RLS-gated read via the anon client).
     const user = await login(email.value, password.value)
     if (user.role !== 'admin') {
-      // Signed in as a customer: send them to the storefront.
-      formError.value = 'This account is a customer account. Use the storefront to sign in.'
+      // Only administrators may enter the dashboard. Sign the account out so a
+      // customer can't linger on an authenticated, non-admin session.
+      formError.value = 'Not an admin. Only administrator accounts can access the dashboard.'
+      await logout()
       return
     }
     toast({ title: 'Welcome back, Admin', message: 'Signed in to the dashboard.', tone: 'success', duration: 2600 })

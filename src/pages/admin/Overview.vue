@@ -126,7 +126,7 @@ import ErrorState from '../../components/ErrorState.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import ProductImage from '../../components/ProductImage.vue'
 import { naira, orderNumber } from '../../lib/format.js'
-import * as api from '../../lib/api.js'
+import { adminListProducts, adminListOrders } from '../../lib/api.js'
 
 const loading = ref(true)
 const error = ref('')
@@ -191,7 +191,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [p, o] = await Promise.all([api.listProducts({}), api.listOrders({})])
+    const [p, o] = await Promise.all([adminListProducts(), adminListOrders()])
     products.value = p
     orders.value = o
   } catch (e) {

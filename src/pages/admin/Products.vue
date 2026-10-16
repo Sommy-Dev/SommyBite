@@ -141,7 +141,13 @@ import ErrorState from '../../components/ErrorState.vue'
 import Switch from '../../components/Switch.vue'
 import ProductImage from '../../components/ProductImage.vue'
 import { naira } from '../../lib/format.js'
-import * as api from '../../lib/api.js'
+import {
+  adminListProducts,
+  adminUpdateProduct,
+  adminDeleteProduct,
+  adminCreateProduct,
+  listCategories,
+} from '../../lib/api.js'
 import { toast, errorToast } from '../../store/toast.js'
 
 const products = ref([])
@@ -164,7 +170,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [p, c] = await Promise.all([api.listProducts({}), api.listCategories()])
+    const [p, c] = await Promise.all([adminListProducts(), listCategories()])
     products.value = p
     categories.value = c
   } catch (e) {
@@ -180,7 +186,7 @@ async function toggleAvailability(product, available) {
   // optimistic UI: feedback within 100ms
   product.stock = nextStock
   try {
-    await api.updateProduct(product.id, { stock: nextStock })
+    await adminUpdateProduct(product.id, { stock: nextStock })
     toast({
       title: available ? `${product.name} is now available` : `${product.name} hidden from menu`,
       tone: 'success',
@@ -196,7 +202,7 @@ function remove(product) {
   const index = products.value.findIndex((p) => p.id === product.id)
   // optimistic removal
   products.value.splice(index, 1)
-  api.deleteProduct(product.id).catch(async () => {
+  adminDeleteProduct(product.id).catch(async () => {
     products.value.splice(index, 0, product) // roll back on failure
   })
   toast({
@@ -204,7 +210,7 @@ function remove(product) {
     action: {
       label: 'Undo',
       onClick: async () => {
-        await api.createProduct(product) // restore
+        await adminCreateProduct(product) // restore
         await load()
         toast({ title: `${product.name} restored`, tone: 'success', duration: 2200 })
       },

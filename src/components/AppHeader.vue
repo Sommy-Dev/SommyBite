@@ -176,7 +176,12 @@ function openCart() {
 }
 
 function goAuth() {
-  router.push({ path: '/auth', query: { next: route.fullPath } })
+  // Never send "next" back to an auth page (that creates
+  // /auth?next=/auth?next=… loops). If the user is already on the auth page,
+  // send them home after they sign in.
+  const path = route.path
+  const next = path === '/auth' || path === '/admin/login' ? '/' : route.fullPath
+  router.push({ path: '/auth', query: { next } })
 }
 
 function signOut() {

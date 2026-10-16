@@ -17,7 +17,11 @@ import {
   DELIVERY_FEE,
   FREE_DELIVERY_OVER,
 } from '../data/catalog.js'
+import { PROMO_CODE, PROMO_DISCOUNT } from '../config/site.js'
 import { uid } from './format.js'
+import { http, getApiToken, setApiToken } from './http.js'
+
+export { getApiToken, setApiToken }
 
 const LS = {
   products: 'fd_products',
@@ -136,6 +140,94 @@ function saveUsers() { persist(LS.users, db.users) }
 function saveSession() { persist(LS.session, session) }
 function saveCounter() { persist(LS.counter, orderCounter) }
 
+/* ---------------- real backend (server/) with mock fallback ----------------
+ * Every helper below first tries the Express API described in the PRD and
+ * silently falls back to the localStorage mock when the API is unreachable,
+ * misconfigured, or throws a 5xx - so the site never goes blank. A 4xx from
+ * the API (invalid promo, out of stock, not your order) is a real answer and
+ * is surfaced to the caller instead of masked by the mock.
+ * ------------------------------------------------------------------------- */
+
+function isApiDown(error) {
+  return !error || typeof error.status !== 'number' || error.status >= 500
+}
+
+function mapProduct(p) {
+  return {
+    id: p.id,
+    name: p.name,
+    categoryId: p.category_id,
+    price: Number(p.price),
+    stock: p.stock,
+    description: p.description || '',
+    image: p.image,
+    emoji: p.emoji,
+    hue: p.hue,
+    rating: Number(p.rating ?? 0),
+    reviews: p.reviews ?? 0,
+    tags: p.tags || [],
+    featured: p.featured,
+    chefSpecial: p.chef_special || false,
+    createdAt: p.created_at,
+  }
+}
+
+function mapOrder(row) {
+  return {
+    id: row.id,
+    number: row.number,
+    customerId: row.user_id,
+    customer: row.customer || {},
+    delivery: row.delivery || {},
+    items: (row.order_items || []).map((i) => ({
+      productId: i.product_id,
+      name: i.name,
+      price: Number(i.price),
+      qty: i.qty,
+      emoji: i.emoji,
+      hue: i.hue,
+      image: i.image,
+    })),
+    subtotal: Number(row.subtotal),
+    discount: Number(row.discount || 0),
+    deliveryFee: Number(row.delivery_fee),
+    total: Number(row.total),
+    status: row.status,
+    paymentStatus: row.payment_status,
+    paymentMethod: row.payment_method,
+    promoCode: row.promo_code,
+    paymentReference: row.payment_reference,
+    createdAt: row.created_at,
+    paidAt: row.paid_at,
+    timeline: row.timeline || [],
+  }
+}
+
+/** Mirror a backend-created order into the mock store so the demo payment
+ *  and confirmation flow (processPayment) keeps working unchanged. */
+function rememberOrder(order) {
+  db.orders.unshift(order)
+  saveOrders()
+}
+
+function sortProducts(items, sort) {
+  const list = [...items]
+  switch (sort) {
+    case 'price_asc':
+      list.sort((a, b) => a.price - b.price)
+      break
+    case 'price_desc':
+      list.sort((a, b) => b.price - a.price)
+      break
+    case 'name':
+      list.sort((a, b) => a.name.localeCompare(b.name))
+      break
+    default:
+      list.sort((a, b) => Number(b.featured) - Number(a.featured))
+  }
+  return list
+}
+
 /* ---------------- latency & connectivity ---------------- */
 
 export function setOffline(value) {
@@ -167,27 +259,26 @@ async function call(fn, opts = {}) {
 /* ---------------- products ---------------- */
 
 export async function listProducts({ q = '', categoryId = '', sort = 'featured' } = {}) {
+  try {
+    const params = new URLSearchParams()
+    if (q) params.set('q', q)
+    if (categoryId) params.set('categoryId', categoryId)
+    if (sort && sort !== 'featured') params.set('sort', sort)
+    const qs = params.toString()
+    const data = await http.get(`/products${qs ? `?${qs}` : ''}`)
+    return sortProducts((data.products || []).map(mapProduct), sort)
+  } catch (e) {
+    if (!isApiDown(e)) throw e
+    /* API unreachable - fall back to the local catalogue */
+  }
   return call(() => {
-    let items = [...db.products]
+    const items = [...db.products]
     if (categoryId) items = items.filter((p) => p.categoryId === categoryId)
     if (q) {
       const needle = q.trim().toLowerCase()
       items = items.filter((p) => p.name.toLowerCase().includes(needle))
     }
-    switch (sort) {
-      case 'price_asc':
-        items.sort((a, b) => a.price - b.price)
-        break
-      case 'price_desc':
-        items.sort((a, b) => b.price - a.price)
-        break
-      case 'name':
-        items.sort((a, b) => a.name.localeCompare(b.name))
-        break
-      default:
-        items.sort((a, b) => Number(b.featured) - Number(a.featured))
-    }
-    return items
+    return sortProducts(items, sort)
   })
 }
 
@@ -197,6 +288,13 @@ export function getProductSync(id) {
 }
 
 export async function getProduct(id) {
+  try {
+    const data = await http.get(`/products/${encodeURIComponent(id)}`)
+    return mapProduct(data.product)
+  } catch (e) {
+    if (!isApiDown(e)) throw e
+    /* API unreachable - fall back to the local catalogue */
+  }
   return call(() => {
     const p = db.products.find((x) => x.id === id)
     if (!p) throw new ApiError('not_found', 'This product is no longer available.')
@@ -364,6 +462,21 @@ export async function requestPasswordReset(email) {
 /* ---------------- orders ---------------- */
 
 export async function listOrders({ status = '', q = '', customerId = '' } = {}) {
+  if (customerId && getApiToken()) {
+    try {
+      const data = await http.get('/orders/my', { auth: true })
+      let items = (data.orders || []).map(mapOrder)
+      if (status && status !== 'all') items = items.filter((o) => o.status === status)
+      if (q) {
+        const needle = q.trim().toLowerCase()
+        items = items.filter((o) => orderNumber(o).toLowerCase().includes(needle))
+      }
+      return items
+    } catch (e) {
+      if (!isApiDown(e)) throw e
+      /* API unreachable - fall back to local orders */
+    }
+  }
   return call(() => {
     let items = [...db.orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     if (customerId) items = items.filter((o) => o.customerId === customerId)
@@ -391,7 +504,30 @@ export async function getOrder(id, customerId = null) {
   })
 }
 
-export async function createOrder({ customerId, customer, delivery, items, subtotal, deliveryFee, total, paymentMethod }) {
+export async function createOrder({ customerId, customer, delivery, items, subtotal, deliveryFee, total, paymentMethod, promoCode }) {
+  // Signed in with a real Supabase session? Let the server own the money:
+  // it re-validates stock, recalculates prices, discounts and totals.
+  if (getApiToken()) {
+    try {
+      const data = await http.post(
+        '/orders',
+        {
+          items: (items || []).map((i) => ({ productId: i.productId, qty: i.qty })),
+          customer,
+          delivery,
+          paymentMethod,
+          promoCode: promoCode || null,
+        },
+        { auth: true },
+      )
+      const order = mapOrder(data.order)
+      rememberOrder(order)
+      return order
+    } catch (e) {
+      if (!isApiDown(e)) throw e
+      /* API unreachable - fall back to the local flow below */
+    }
+  }
   return call(() => {
     // Server-side stock + price revalidation (edge case: stock changed since cart load).
     for (const item of items) {
@@ -523,4 +659,111 @@ export function calculateTotals(items) {
   const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0)
   const deliveryFee = subtotal === 0 ? 0 : subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE
   return { subtotal, deliveryFee, total: subtotal + deliveryFee, freeDeliveryOver: FREE_DELIVERY_OVER }
+}
+
+/* ---------------- promo codes (server-validated) ---------------- */
+
+/**
+ * SOMMY20-style check. The server (promo_codes table) is the source of truth;
+ * offline we fall back to the one public code advertised on the site.
+ */
+export async function validatePromoCode(code, subtotal = 0) {
+  try {
+    const data = await http.post('/promo/validate', { code, subtotal })
+    return { valid: true, code: data.code, percentOff: data.percentOff, discount: data.discount }
+  } catch (e) {
+    if (!isApiDown(e)) throw e
+    if (String(code).trim().toUpperCase() === PROMO_CODE) {
+      return {
+        valid: true,
+        code: PROMO_CODE,
+        percentOff: PROMO_DISCOUNT,
+        discount: Math.round((subtotal * PROMO_DISCOUNT) / 100),
+      }
+    }
+    throw new ApiError('validation', 'That promo code is not valid.')
+  }
+}
+
+/* ---------------- payments via the backend (Paystack) ---------------- */
+
+/**
+ * Start a real Paystack transaction for an order the signed-in customer owns.
+ * Returns { authorizationUrl, reference, amountKobo } - redirect the browser
+ * to authorizationUrl, then poll verifyPayment(reference).
+ */
+export async function initPayment(orderId) {
+  return http.post('/payments/initialize', { orderId }, { auth: true })
+}
+
+/** Verify a Paystack reference server-side. Marks the order paid once Paystack confirms. */
+export async function verifyPayment(reference) {
+  return http.get(`/payments/verify/${encodeURIComponent(reference)}`, { auth: true })
+}
+
+/* ---------------- admin API (real backend only — never the localStorage mock) ----------------
+ * These hit the authenticated Express endpoints in server/. They do NOT fall back
+ * to the local catalogue, so admin screens always show live Supabase data.
+ * -------------------------------------------------------------------------- */
+
+// The /api/admin/orders endpoint joins the buyer's profiles row; merge it into the
+// customer snapshot so the buyer name/phone are always present.
+function mapAdminOrder(row) {
+  const order = mapOrder(row)
+  const profile = row.profiles || {}
+  if (!order.customer) order.customer = {}
+  if (!order.customer.name && profile.full_name) order.customer.name = profile.full_name
+  if (!order.customer.phone && profile.phone) order.customer.phone = profile.phone
+  return order
+}
+
+/** GET /api/admin/orders - all orders (optionally filtered by status). */
+export async function adminListOrders({ status = '' } = {}) {
+  const params = new URLSearchParams()
+  if (status && status !== 'all') params.set('status', status)
+  const qs = params.toString()
+  const data = await http.get(`/admin/orders${qs ? `?${qs}` : ''}`, { auth: true })
+  return (data.orders || []).map(mapAdminOrder)
+}
+
+/** GET /api/admin/orders/:id - a single order with its line items and buyer. */
+export async function adminGetOrder(id) {
+  const data = await http.get(`/admin/orders/${encodeURIComponent(id)}`, { auth: true })
+  return mapAdminOrder(data.order)
+}
+
+/** PATCH /api/orders/:id/status - advance an order to the next valid status. */
+export async function adminUpdateOrderStatus(id, nextStatus) {
+  const data = await http.patch(`/orders/${encodeURIComponent(id)}/status`, { status: nextStatus }, { auth: true })
+  return mapAdminOrder(data.order)
+}
+
+/** GET /api/products (with admin token) - all products, including inactive ones. */
+export async function adminListProducts() {
+  const data = await http.get('/products', { auth: true })
+  return (data.products || []).map(mapProduct)
+}
+
+/** GET /api/products/:id (with admin token) - one product, even if inactive. */
+export async function adminGetProduct(id) {
+  const data = await http.get(`/products/${encodeURIComponent(id)}`, { auth: true })
+  return mapProduct(data.product)
+}
+
+/** POST /api/products - create a product. */
+export async function adminCreateProduct(payload) {
+  const data = await http.post('/products', payload, { auth: true })
+  return mapProduct(data.product)
+}
+
+/** PUT /api/products/:id - partial product update (stock, availability, price...). */
+export async function adminUpdateProduct(id, payload) {
+  const data = await http.patch(`/products/${encodeURIComponent(id)}`, payload, { auth: true })
+  return mapProduct(data.product)
+}
+
+/** DELETE /api/products/:id. */
+export async function adminDeleteProduct(id) {
+  await http.del(`/products/${encodeURIComponent(id)}`, { auth: true })
+  return true
 }

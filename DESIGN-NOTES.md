@@ -81,6 +81,22 @@ Skip link, semantic landmarks (`header`, `main`, `nav`, `aside`, `footer`, `tabl
 ## 7. Security-aware UX
 Checkout shows lock icons and "Card details never touch our servers" cues. No secret keys or credentials anywhere in the UI. Admin login is a separate, visually distinct screen ("Staff only") with a visible "Administrator" role badge in the sidebar/top bar. In production, Paystack/Flutterwave run server-side via Express (PRD §9) — this demo simulates the same contract with a two-phase client/server mock.
 
+## 9. Build progress
+
+### Backend + database (PRD §5, §9) — Phase 1: Supabase (complete)
+- [x] `supabase/migrations/0001_tables.sql` — `profiles` (pk → `auth.users`, `full_name`, `phone`, `role` default `'customer'`), `products`, `orders` (status + payment status + reference columns), `order_items`, `promo_codes` (seeded `SOMMY20` = 20% off, active).
+- [x] `on_auth_user_created` trigger — inserts a `profiles` row on every signup, always role `customer`.
+- [x] `supabase/migrations/0002_rls.sql` — RLS on every table: public read of active products; customers read/create only their own orders + order_items; `profiles.role = 'admin'` (via `is_admin()`) required to write products, read all orders and change order status; `prevent_self_role_change` trigger blocks any in-app role escalation.
+- [x] `supabase/migrations/0003_storage.sql` — `product-images` bucket, public read, admin-only upload/update/delete (5 MB, image mime types).
+- [x] `supabase/migrations/0004_seed_products.sql` — all 14 catalogue rows mirrored from `src/data/catalog.js` (same ids/prices/stock) so Shop has data day one.
+- [x] `supabase/setup.sql` — single-file copy of the four migrations, with the run instructions and the one-line admin promotion command at the top.
+
+### Backend + database — Phase 2: Express + frontend connection (complete)
+- [x] `server/` — package.json (express, cors, dotenv, @supabase/supabase-js, axios), `index.js` (CORS via `CLIENT_URL`, JSON limit, 404 + error handlers, `GET /api/health`, `PORT` default 5000, `start: node index.js` — Render-ready), `.env.example` (no real secrets), `server/.gitignore`.
+- [x] Routes — `GET /api/products[/:id]` (public; admins also see inactive), `POST /api/orders`, `GET /api/orders/my`, `POST /api/promo/validate`, `POST /api/payments/initialize`, `GET /api/payments/verify/:reference`, admin-only product CRUD + `GET /api/admin/orders` + `PATCH /api/orders/:id/status` (STATUS_TRANSITIONS enforced).
+- [x] Security — `requireAuth` verifies the Supabase JWT (`auth.getUser`), `requireAdmin` checks `profiles.role`; service-role + Paystack secret keys live only in `server/`; order totals, promo discount and delivery fee are recalculated from live DB prices (client totals ignored); stock is validated at order creation and decremented only after Paystack verify succeeds.
+- [x] Frontend — `VITE_API_URL` in `.env`, `src/lib/http.js` (fetch helper, 8s timeout, bearer token from `sb_access_token`), `src/lib/api.js` products/own-orders/order-create/promo now call the API first and fall back to the localStorage mock on network/5xx errors, so the site never goes blank. Checkout, cart and admin screens are unchanged.
+
 ## 8. Demo shortcuts
 - Customer: `demo@brand.ng / demo1234` · Admin: `admin@brand.ng / admin1234`
 - Checkout has a "Simulate a declined card" switch to exercise the failed-payment state.

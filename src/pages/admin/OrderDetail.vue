@@ -238,8 +238,7 @@ import Select from '../../components/Select.vue'
 import Modal from '../../components/Modal.vue'
 import ProductImage from '../../components/ProductImage.vue'
 import { naira, orderNumber, formatDateTime } from '../../lib/format.js'
-import * as api from '../../lib/api.js'
-import { toast, errorToast } from '../../store/toast.js'
+import { adminGetOrder, adminUpdateOrderStatus } from '../../lib/api.js'
 import { ORDER_STATUSES, STATUS_TRANSITIONS, PAYMENT_METHODS } from '../../data/catalog.js'
 
 const route = useRoute()
@@ -298,7 +297,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    order.value = await api.getOrder(route.params.id)
+    order.value = await adminGetOrder(route.params.id)
     const opts = STATUS_TRANSITIONS[order.value.status] || []
     nextStatus.value = opts[0] || ''
   } catch (e) {
@@ -317,7 +316,7 @@ async function applyStatus() {
   }
   updating.value = true
   try {
-    order.value = await api.updateOrderStatus(order.value.id, nextStatus.value)
+    order.value = await adminUpdateOrderStatus(order.value.id, nextStatus.value)
     toast({
       title: `Order ${orderNumber(order.value)} moved to ${statusLabel(order.value.status)}`,
       tone: 'success',
@@ -333,7 +332,7 @@ async function applyStatus() {
 async function confirmCancel() {
   cancelling.value = true
   try {
-    order.value = await api.updateOrderStatus(order.value.id, 'cancelled')
+    order.value = await adminUpdateOrderStatus(order.value.id, 'cancelled')
     cancelOpen.value = false
     toast({ title: 'Order cancelled', message: 'The customer has been notified.', tone: 'success' })
   } catch (e) {

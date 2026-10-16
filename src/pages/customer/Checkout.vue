@@ -254,7 +254,7 @@
                 :disabled="paying || !allValid"
                 @click="pay"
               >
-                Pay {{ naira(totals.total) }}
+                Pay {{ naira(grandTotal) }}
               </Button>
             </div>
             <p v-if="!allValid" class="mt-2 text-right text-sm text-text-secondary" role="status">
@@ -335,6 +335,42 @@
                   <dt class="text-text-secondary">Subtotal</dt>
                   <dd class="tabular-nums text-text-primary">{{ naira(totals.subtotal) }}</dd>
                 </div>
+
+                <!-- Promo code -->
+                <div class="flex items-start justify-between gap-2">
+                  <dt class="text-text-secondary">Promo code</dt>
+                  <dd class="text-right">
+                    <div v-if="promo" class="flex items-center justify-end gap-2">
+                      <span class="text-sm font-medium text-emerald-700">Promo applied: -{{ promo.percentOff }}%</span>
+                      <button
+                        type="button"
+                        class="text-xs underline text-text-secondary hover:text-text-primary"
+                        @click="removePromo"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <form v-else class="flex items-center gap-2" @submit.prevent="applyPromo">
+                      <input
+                        v-model="promoInput"
+                        type="text"
+                        inputmode="text"
+                        placeholder="SOMMY20"
+                        maxlength="20"
+                        autocomplete="off"
+                        class="w-28 rounded-md border border-border-subtle bg-white px-2.5 py-1.5 text-sm text-text-primary placeholder:text-text-tertiary focus:border-orange-700 focus:ring-2 focus:ring-orange-700/20"
+                      />
+                      <Button size="sm" variant="secondary" :loading="promoBusy" type="submit">Apply</Button>
+                    </form>
+                    <p v-if="promoError" class="mt-1.5 text-sm text-red-600">Invalid or expired code</p>
+                  </dd>
+                </div>
+
+                <div v-if="promo" class="flex justify-between">
+                  <dt class="text-text-secondary">Discount</dt>
+                  <dd class="tabular-nums text-red-600">-{{ naira(discount) }}</dd>
+                </div>
+
                 <div class="flex justify-between">
                   <dt class="text-text-secondary">Delivery</dt>
                   <dd class="tabular-nums text-text-primary">
@@ -343,7 +379,7 @@
                 </div>
                 <div class="flex justify-between border-t border-border-subtle pt-2 text-base font-semibold">
                   <dt class="text-text-primary">Total</dt>
-                  <dd class="tabular-nums text-text-primary">{{ naira(totals.total) }}</dd>
+                  <dd class="tabular-nums text-text-primary">{{ naira(grandTotal) }}</dd>
                 </div>
               </dl>
               <p class="mt-4 flex items-start gap-1.5 rounded-md bg-orange-50 px-3 py-2 text-xs leading-relaxed text-orange-800">
@@ -410,6 +446,14 @@ const simulateFailure = ref(false)
 const lines = computed(() => cartLines.value.filter((l) => l.available))
 const totals = computed(() => cartTotals.value)
 const paymentMethods = PAYMENT_METHODS
+
+const promo = ref(null) // { code, percentOff, discount } once applied
+const promoInput = ref('')
+const promoBusy = ref(false)
+const promoError = ref('')
+
+const discount = computed(() => promo.value?.discount || 0)
+const grandTotal = computed(() => totals.value.subtotal - discount.value + totals.value.deliveryFee)
 const methodName = computed(
   () => paymentMethods.find((m) => m.id === form.value.paymentMethod)?.name || 'the payment page'
 )
@@ -528,6 +572,39 @@ watch(step, (s) => {
 
 let doubleSubmitGuard = false
 
+/* ---------- promo code ---------- */
+
+async function applyPromo() {
+  promoError.value = ''
+  const code = promoInput.value.trim().toUpperCase()
+  if (!code) {
+    promoError.value = 'Enter a promo code.'
+    return
+  }
+  promoBusy.value = true
+  try {
+    const res = await api.validatePromoCode(code, totals.value.subtotal)
+    promo.value = { code: res.code, percentOff: res.percentOff, discount: res.discount }
+    toast({
+      title: 'Promo applied',
+      message: `-${res.percentOff}% = -${naira(res.discount)} off your order`,
+      tone: 'success',
+      duration: 2600,
+    })
+  } catch (e) {
+    promo.value = null
+    promoError.value = 'Invalid or expired code'
+  } finally {
+    promoBusy.value = false
+  }
+}
+
+function removePromo() {
+  promo.value = null
+  promoInput.value = ''
+  promoError.value = ''
+}
+
 async function pay() {
   if (doubleSubmitGuard || paying.value) return // prevent double submission
   const first = validateAll(['name', 'email', 'phone', 'address', 'city', 'state'])
@@ -568,11 +645,12 @@ async function pay() {
         emoji: l.product.emoji,
         hue: l.product.hue,
       })),
-      subtotal: totals.value.subtotal,
-      deliveryFee: totals.value.deliveryFee,
-      total: totals.value.total,
-      paymentMethod: form.value.paymentMethod,
-    })
+       subtotal: totals.value.subtotal,
+       deliveryFee: totals.value.deliveryFee,
+       total: totals.value.total,
+       promoCode: promo.value?.code || null,
+       paymentMethod: form.value.paymentMethod,
+     })
   } catch (e) {
     // e.g. stock changed while checking out — actionable, items preserved
     payState.value = 'failed'

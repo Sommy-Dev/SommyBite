@@ -119,7 +119,7 @@ import EmptyState from '../../components/EmptyState.vue'
 import ErrorState from '../../components/ErrorState.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import { naira, orderNumber, formatDate } from '../../lib/format.js'
-import * as api from '../../lib/api.js'
+import { adminListOrders } from '../../lib/api.js'
 import { ORDER_STATUSES } from '../../data/catalog.js'
 
 const orders = ref([])
@@ -149,7 +149,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    orders.value = await api.listOrders({})
+    orders.value = await adminListOrders({})
   } catch (e) {
     error.value = e.message
   } finally {

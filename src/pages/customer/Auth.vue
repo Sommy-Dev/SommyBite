@@ -9,6 +9,15 @@
       </p>
     </div>
 
+    <p
+      v-if="!supabaseConfigured"
+      class="flex items-start gap-1.5 rounded-md bg-red-50 px-3 py-2.5 text-sm font-medium text-red-700"
+      role="alert"
+    >
+      <Icon name="exclamation-circle" :size="18" class="mt-0.5 shrink-0" />
+      Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env, then restart the dev server.
+    </p>
+
     <!-- Toggle: one screen, two modes -->
     <div role="tablist" aria-label="Authentication" class="grid grid-cols-2 gap-1 rounded-lg bg-surface-container-low p-1">
       <button
@@ -73,7 +82,7 @@
           {{ formError }}
         </p>
 
-        <Button variant="primary" size="lg" class="w-full" :loading="busy" :loading-label="mode === 'login' ? 'Signing in' : 'Creating account'">
+        <Button variant="primary" size="lg" type="submit" class="w-full" :loading="busy" :loading-label="mode === 'login' ? 'Signing in' : 'Creating account'">
           {{ mode === 'login' ? 'Sign in' : 'Create account' }}
         </Button>
       </form>
@@ -156,6 +165,7 @@ import Button from '../../components/Button.vue'
 import Input from '../../components/Input.vue'
 import Modal from '../../components/Modal.vue'
 import { login, register } from '../../store/auth.js'
+import { supabaseConfigured } from '../../lib/supabase.js'
 import { toast } from '../../store/toast.js'
 import * as api from '../../lib/api.js'
 
@@ -196,8 +206,21 @@ function switchMode(next) {
   Object.keys(touched).forEach((k) => delete touched[k])
 }
 
+function resolveNext() {
+  const raw = String(route.query.next || '/')
+  // "next" must never point back at an auth page (prevents /auth?next=/auth?next=/orders loops).
+  const path = raw.split('?')[0]
+  if (path === '/auth' || path === '/admin/login' || path === '') return '/'
+  return raw
+}
+
 async function submit() {
   formError.value = ''
+  if (!supabaseConfigured) {
+    formError.value =
+      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env, then restart the dev server.'
+    return
+  }
   const fields = mode.value === 'register' ? ['name', 'email', 'password'] : ['email', 'password']
   let first = ''
   fields.forEach((f) => {
@@ -219,8 +242,7 @@ async function submit() {
       tone: 'success',
       duration: 2600,
     })
-    const next = route.query.next || '/'
-    router.push(next === '/checkout' ? '/checkout' : next)
+    router.push(resolveNext())
   } catch (e) {
     formError.value = e.message
   } finally {

@@ -9,7 +9,7 @@
       <input
         :id="inputId"
         :value="modelValue"
-        :type="type"
+        :type="passwordVisible ? 'text' : type"
         :placeholder="placeholder"
         :disabled="disabled"
         :required="required"
