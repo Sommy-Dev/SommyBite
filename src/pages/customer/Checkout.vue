@@ -189,10 +189,14 @@
             <h2 id="payment-heading" class="text-xl font-semibold tracking-tight text-text-primary">
               Payment
             </h2>
-            <p class="mt-1 flex items-center gap-1.5 text-sm text-text-secondary">
-              <Icon name="lock" :size="16" class="text-emerald-600" />
-              Secured by Paystack and Flutterwave. Card details never touch our servers.
-            </p>
+            <div class="mt-2 flex items-center gap-2.5">
+              <Badge v-if="demoPayment" tone="warning" icon="info">Demo payment (test mode)</Badge>
+              <p class="flex items-center gap-1.5 text-sm text-text-secondary">
+                <Icon name="lock" :size="16" class="text-emerald-600" />
+                <template v-if="demoPayment">Demo payment — no real charge will be made. Complete checkout to test the full flow.</template>
+                <template v-else>Secured by Paystack and Flutterwave. Card details never touch our servers.</template>
+              </p>
+            </div>
 
             <fieldset class="mt-4 grid gap-3 sm:grid-cols-2">
               <legend class="sr-only">Payment method</legend>
@@ -270,7 +274,8 @@
                   class="animate-spin"
                 />
                 <Icon v-else name="check" :size="16" class="text-emerald-600" />
-                Redirecting to {{ methodName }}…
+                <template v-if="demoPayment">Starting demo payment…</template>
+                <template v-else>Redirecting to {{ methodName }}…</template>
               </div>
               <div class="flex items-center gap-2.5 text-sm" :class="payState === 'verifying' ? 'text-text-secondary' : 'text-text-tertiary'">
                 <Icon
@@ -280,7 +285,8 @@
                   class="animate-spin"
                 />
                 <Icon v-else name="check" :size="16" class="text-emerald-600" />
-                Verifying payment with the bank…
+                <template v-if="demoPayment">Confirming demo payment…</template>
+                <template v-else>Verifying payment with the bank…</template>
               </div>
             </div>
           </section>
@@ -382,10 +388,11 @@
                   <dd class="tabular-nums text-text-primary">{{ naira(grandTotal) }}</dd>
                 </div>
               </dl>
-              <p class="mt-4 flex items-start gap-1.5 rounded-md bg-orange-50 px-3 py-2 text-xs leading-relaxed text-orange-800">
-                <Icon name="lock" :size="14" class="mt-0.5 shrink-0" />
-                We only mark your order as paid after the bank confirms it.
-              </p>
+            <p class="mt-4 flex items-start gap-1.5 rounded-md bg-orange-50 px-3 py-2 text-xs leading-relaxed text-orange-800">
+              <Icon name="lock" :size="14" class="mt-0.5 shrink-0" />
+              <template v-if="demoPayment">This is a demo (test) payment — no real money is charged.</template>
+              <template v-else>We only mark your order as paid after the bank confirms it.</template>
+            </p>
             </div>
           </div>
         </aside>
@@ -398,6 +405,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from '../../components/Icon.vue'
+import Badge from '../../components/Badge.vue'
 import Button from '../../components/Button.vue'
 import Input from '../../components/Input.vue'
 import Select from '../../components/Select.vue'
@@ -442,6 +450,7 @@ const payState = ref('idle') // idle | authorizing | verifying | failed
 const payError = ref('')
 const paying = computed(() => payState.value === 'authorizing' || payState.value === 'verifying')
 const simulateFailure = ref(false)
+const demoPayment = ref(false)
 
 const lines = computed(() => cartLines.value.filter((l) => l.available))
 const totals = computed(() => cartTotals.value)
@@ -645,12 +654,9 @@ async function pay() {
         emoji: l.product.emoji,
         hue: l.product.hue,
       })),
-       subtotal: totals.value.subtotal,
-       deliveryFee: totals.value.deliveryFee,
-       total: totals.value.total,
-       promoCode: promo.value?.code || null,
-       paymentMethod: form.value.paymentMethod,
-     })
+      promoCode: promo.value?.code || null,
+      paymentMethod: form.value.paymentMethod,
+    })
   } catch (e) {
     // e.g. stock changed while checking out — actionable, items preserved
     payState.value = 'failed'
@@ -668,8 +674,19 @@ async function pay() {
       clearCart()
       payState.value = 'idle'
       doubleSubmitGuard = false
-      toast({ title: 'Order placed', message: `Payment confirmed for ${naira(order.total)}.`, tone: 'success' })
-      router.push({ name: 'confirmation', params: { orderId: order.id } })
+      if (result.demo) demoPayment.value = true
+      toast({
+        title: result.demo ? 'Order placed (demo)' : 'Order placed',
+        message: result.demo
+          ? `Demo payment recorded — ${naira(order.total)} reserved (no real charge).`
+          : `Payment confirmed for ${naira(order.total)}.`,
+        tone: 'success',
+      })
+      router.push({
+        name: 'confirmation',
+        params: { orderId: order.id },
+        query: result.demo ? { demo: '1' } : {},
+      })
     } else {
       payState.value = 'failed'
       payError.value = result.reason
@@ -688,5 +705,10 @@ onMounted(() => {
     return
   }
   prefillFromProfile(auth.user)
+  api.paymentMode().then((mode) => {
+    demoPayment.value = mode.demoMode
+  }).catch(() => {
+    demoPayment.value = true
+  })
 })
 </script>

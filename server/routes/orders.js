@@ -138,6 +138,27 @@ router.get('/my', requireAuth, async (req, res, next) => {
 })
 
 /**
+ * GET /api/orders/:id - authenticated owner only.
+ * Single-order read used by the confirmation page so it shows the saved
+ * total + real order number straight from the database (not client state).
+ */
+router.get('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (error) throw error
+    if (!order) throw httpError(404, 'Order not found.')
+    if (order.user_id !== req.user.id) throw httpError(404, 'Order not found.')
+    res.json({ order })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
  * PATCH /api/orders/:id/status - admin only.
  * Enforces the STATUS_TRANSITIONS map server-side (you cannot jump
  * Pending -> Delivered) and keeps the timeline trail.

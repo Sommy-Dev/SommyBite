@@ -15,9 +15,9 @@
 </template>
 
 <script setup>
+const emit = defineEmits(['select'])
 defineProps({
   active: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
 })
-defineEmits(['select'])
 </script>

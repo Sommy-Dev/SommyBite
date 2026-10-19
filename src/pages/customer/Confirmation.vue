@@ -44,7 +44,8 @@
           Order placed
         </h1>
         <p class="mx-auto max-w-md text-base leading-relaxed text-text-secondary">
-          Thank you, {{ firstName }}. Payment of {{ naira(order.total) }} was confirmed.
+          <template v-if="demo">This is a demo (test) payment — no real charge was made.</template>
+          <template v-else>Payment of {{ naira(order.total) }} was confirmed.</template>
           Your food is being prepared.
         </p>
       </div>
@@ -67,9 +68,9 @@
             <Icon name="copy" :size="20" />
           </button>
         </div>
-        <p class="mt-1 text-sm text-emerald-800">
-          Saved to <span class="font-medium">{{ order.customer.email }}</span> — we sent a receipt by email.
-        </p>
+         <p class="mt-1 text-sm text-emerald-800">
+           Saved to <span class="font-medium">{{ order.customer.email }}</span>
+         </p>
       </div>
 
       <!-- What happens next -->
@@ -135,6 +136,12 @@
             <dt class="text-text-secondary">Subtotal</dt>
             <dd class="tabular-nums text-text-primary">{{ naira(order.subtotal) }}</dd>
           </div>
+
+          <div v-if="order.promoCode" class="flex justify-between">
+            <dt class="text-text-secondary">Promo ({{ order.promoCode }})</dt>
+            <dd class="tabular-nums text-red-600">-{{ naira(order.discount) }}</dd>
+          </div>
+
           <div class="flex justify-between">
             <dt class="text-text-secondary">Delivery</dt>
             <dd class="tabular-nums text-text-primary">
@@ -149,6 +156,7 @@
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <StatusBadge status="paid" />
           <StatusBadge :status="statusFor(order)" />
+          <Badge v-if="demo" tone="warning" icon="info">Demo payment (test mode)</Badge>
           <Badge tone="neutral" icon="wallet">
             Paid with {{ methodName }}
           </Badge>
@@ -195,8 +203,8 @@ const order = ref(null)
 const loading = ref(true)
 const error = ref('')
 const eta = deliveryWindow()
+const demo = computed(() => route.query.demo === '1')
 
-const firstName = computed(() => (order.value?.customer?.name || 'there').split(' ')[0])
 const methodName = computed(
   () => PAYMENT_METHODS.find((m) => m.id === order.value?.paymentMethod)?.name || 'card'
 )

@@ -1,7 +1,12 @@
 import { Router } from 'express'
 import { supabase } from '../lib/supabase.js'
 import { httpError } from '../lib/errors.js'
-import { initializeTransaction, paystackConfigured, verifyTransaction } from '../lib/paystack.js'
+import {
+  initializeTransaction,
+  paystackDemoMode,
+  paystackConfigured,
+  verifyTransaction,
+} from '../lib/paystack.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -19,10 +24,63 @@ async function fetchOwnedOrder(req, idOrReference) {
   return order
 }
 
+/** Mark an order Paid in Supabase: statuses, timeline entry + stock decrement. */
+async function markOrderPaid(order) {
+  const now = new Date().toISOString()
+  const timeline = Array.isArray(order.timeline) ? [...order.timeline, { status: 'paid', at: now }] : []
+
+  const { data: updated, error: updateError } = await supabase
+    .from('orders')
+    .update({
+      payment_status: 'paid',
+      status: order.status === 'pending' ? 'paid' : order.status,
+      paid_at: now,
+      timeline,
+    })
+    .eq('id', order.id)
+    .select()
+    .single()
+  if (updateError) throw updateError
+
+  // Decrement stock only now, after verified payment.
+  for (const item of order.order_items ?? []) {
+    if (!item.product_id) continue
+    const { data: product } = await supabase
+      .from('products')
+      .select('stock')
+      .eq('id', item.product_id)
+      .maybeSingle()
+    if (product) {
+      await supabase
+        .from('products')
+        .update({ stock: Math.max(0, Number(product.stock) - item.qty) })
+        .eq('id', item.product_id)
+    }
+  }
+
+  return updated
+}
+
+/**
+ * GET /api/payments/mode - public config probe so the checkout can label the
+ * payment flow as "Demo payment (test mode)" instead of pretending a bank is
+ * involved, without first having to create an order.
+ */
+router.get('/mode', (_req, res) => {
+  res.json({
+    configured: paystackConfigured(),
+    demoMode: paystackDemoMode(),
+  })
+})
+
 /**
  * POST /api/payments/initialize - authenticated order owner only.
  * The charge amount is recomputed from the order's server-calculated total
  * (never from the request body).
+ *
+ * In demo mode (Paystack key missing/placeholder) a reference is minted and the
+ * order is set to "verifying" without calling Paystack. In live mode a real
+ * authorization URL is returned for an off-site redirect.
  */
 router.post('/initialize', requireAuth, async (req, res, next) => {
   try {
@@ -31,14 +89,27 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
     if (order.payment_status === 'paid') {
       return res.json({ alreadyPaid: true, order })
     }
-    if (!paystackConfigured()) {
-      throw httpError(503, 'Paystack is not configured on the server. Add PAYSTACK_SECRET_KEY to server/.env.')
-    }
 
     const amountKobo = toKobo(order.total)
     if (amountKobo < 100) throw httpError(400, 'Order total is too small to charge.')
 
     const reference = `SB-${order.id}-${Date.now()}`
+    const simulateDecline = Boolean(req.body?.simulateDecline)
+
+    if (paystackDemoMode()) {
+      await supabase
+        .from('orders')
+        .update({ payment_status: 'verifying', payment_reference: reference })
+        .eq('id', order.id)
+
+      return res.json({
+        demoMode: true,
+        reference,
+        amountKobo,
+        simulateDecline,
+      })
+    }
+
     const result = await initializeTransaction({
       email: order.customer?.email || req.user.email,
       amountKobo,
@@ -67,14 +138,13 @@ router.post('/initialize', requireAuth, async (req, res, next) => {
 
 /**
  * GET /api/payments/verify/:reference - authenticated owner only.
- * Trusts Paystack's verify response (amount + success status), marks the
- * order paid, appends the timeline entry and decrements stock exactly once.
+ * Trusts Paystack's verify response (amount + success status) when configured,
+ * and simulates the same contract in demo mode (incl. simulateDecline query
+ * param) so the "declined card" demo still works without a real Paystack key.
  */
 router.get('/verify/:reference', requireAuth, async (req, res, next) => {
   try {
-    if (!paystackConfigured()) {
-      throw httpError(503, 'Paystack is not configured on the server. Add PAYSTACK_SECRET_KEY to server/.env.')
-    }
+    const simulateDecline = req.query.simulateDecline === 'true'
     const reference = String(req.params.reference ?? '')
     const { data: order } = await supabase
       .from('orders')
@@ -89,44 +159,25 @@ router.get('/verify/:reference', requireAuth, async (req, res, next) => {
       return res.json({ status: 'paid', order })
     }
 
+    if (paystackDemoMode()) {
+      if (simulateDecline) {
+        await supabase.from('orders').update({ payment_status: 'failed' }).eq('id', order.id)
+        return res.json({
+          status: 'failed',
+          message: 'Your card was declined. Try another card or payment method.',
+        })
+      }
+      const updated = await markOrderPaid(order)
+      return res.json({ status: 'paid', order: updated })
+    }
+
+    // Real Paystack verification
     const result = await verifyTransaction(reference)
     const txn = result?.data
     const expectedKobo = toKobo(order.total)
 
     if (txn?.status === 'success' && Number(txn.amount) === expectedKobo) {
-      const now = new Date().toISOString()
-      const timeline = Array.isArray(order.timeline) ? order.timeline : []
-      timeline.push({ status: 'paid', at: now })
-
-      const { data: updated, error } = await supabase
-        .from('orders')
-        .update({
-          payment_status: 'paid',
-          status: order.status === 'pending' ? 'paid' : order.status,
-          paid_at: now,
-          timeline,
-        })
-        .eq('id', order.id)
-        .select()
-        .single()
-      if (error) throw error
-
-      // Decrement stock only now, after verified payment (PRD section 11).
-      for (const item of order.order_items ?? []) {
-        if (!item.product_id) continue
-        const { data: product } = await supabase
-          .from('products')
-          .select('stock')
-          .eq('id', item.product_id)
-          .maybeSingle()
-        if (product) {
-          await supabase
-            .from('products')
-            .update({ stock: Math.max(0, Number(product.stock) - item.qty) })
-            .eq('id', item.product_id)
-        }
-      }
-
+      const updated = await markOrderPaid(order)
       return res.json({ status: 'paid', order: updated })
     }
 

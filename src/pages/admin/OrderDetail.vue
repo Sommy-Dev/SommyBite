@@ -101,6 +101,10 @@
                 <dt class="text-gray-500">Subtotal</dt>
                 <dd class="tabular-nums text-gray-900">{{ naira(order.subtotal) }}</dd>
               </div>
+              <div v-if="order.discount > 0" class="flex justify-between">
+                <dt class="text-gray-500">Promo ({{ order.promoCode }})</dt>
+                <dd class="tabular-nums text-red-600">-{{ naira(order.discount) }}</dd>
+              </div>
               <div class="flex justify-between">
                 <dt class="text-gray-500">Delivery</dt>
                 <dd class="tabular-nums text-gray-900">{{ order.deliveryFee === 0 ? 'Free' : naira(order.deliveryFee) }}</dd>

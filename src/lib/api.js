@@ -494,6 +494,16 @@ export function orderNumber(o) {
 }
 
 export async function getOrder(id, customerId = null) {
+  // Signed in? Read the real order (with recalculated totals) from Supabase.
+  if (getApiToken()) {
+    try {
+      const data = await http.get(`/orders/${encodeURIComponent(id)}`, { auth: true })
+      if (!data.order) throw new ApiError('not_found', 'This order could not be found.')
+      return mapOrder(data.order)
+    } catch (e) {
+      if (!isApiDown(e)) throw e
+    }
+  }
   return call(() => {
     const order = db.orders.find((o) => o.id === id)
     if (!order) throw new ApiError('not_found', 'This order could not be found.')
@@ -504,7 +514,7 @@ export async function getOrder(id, customerId = null) {
   })
 }
 
-export async function createOrder({ customerId, customer, delivery, items, subtotal, deliveryFee, total, paymentMethod, promoCode }) {
+export async function createOrder({ customerId, customer, delivery, items, paymentMethod, promoCode }) {
   // Signed in with a real Supabase session? Let the server own the money:
   // it re-validates stock, recalculates prices, discounts and totals.
   if (getApiToken()) {
@@ -542,6 +552,23 @@ export async function createOrder({ customerId, customer, delivery, items, subto
         throw new ApiError('stock', `Only ${product.stock} × "${item.name}" left in stock. We adjusted your quantity.`)
       }
     }
+
+    // Recalculate every total from live prices + promo (mirrors POST /api/orders).
+    const computedSubtotal = items.reduce((sum, i) => sum + Number(i.price || 0) * i.qty, 0)
+    let percentOff = 0
+    if (promoCode) {
+      const code = String(promoCode).trim().toUpperCase()
+      if (code === PROMO_CODE) {
+        percentOff = PROMO_DISCOUNT
+      } else {
+        throw new ApiError('validation', 'That promo code is not valid.')
+      }
+    }
+    const computedDiscount = Math.round((computedSubtotal * percentOff) / 100)
+    const computedDeliveryFee =
+      computedSubtotal === 0 ? 0 : computedSubtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE
+    const computedTotal = computedSubtotal - computedDiscount + computedDeliveryFee
+
     orderCounter += 1
     saveCounter()
     const now = new Date().toISOString()
@@ -563,12 +590,14 @@ export async function createOrder({ customerId, customer, delivery, items, subto
           image: product ? product.image : i.image,
         }
       }),
-      subtotal,
-      deliveryFee,
-      total,
+      subtotal: computedSubtotal,
+      discount: computedDiscount,
+      deliveryFee: computedDeliveryFee,
+      total: computedTotal,
       status: 'pending',
       paymentStatus: 'pending',
       paymentMethod,
+      promoCode: promoCode || null,
       createdAt: now,
       timeline: [{ status: 'pending', at: now }],
     }
@@ -615,9 +644,50 @@ function label(status) {
 /**
  * Two-phase payment: authorise → server verifies. The order is shown as
  * "Paid" only after the verify step succeeds (never on the client alone).
+ *
+ * When the backend is reachable the two phases go through Express (which talks
+ * to Paystack in live mode, or simulates in demo/test mode). When the backend
+ * is unreachable the in-memory mock keeps the checkout working.
  */
 export async function processPayment(orderId, method, { fail = false } = {}) {
-  // phase 1: redirect to provider (authorise)
+  // Real backend path: authorise → verify.
+  if (getApiToken()) {
+    try {
+      const init = await initPayment(orderId, method, { fail })
+
+      // Idempotent retry: order already paid.
+      if (init.alreadyPaid) {
+        return { status: 'paid', reference: init.order?.payment_reference || null, demo: false }
+      }
+
+      if (init.demoMode) {
+        // Demo payment: simulate the authorisation phase, then verify through
+        // the backend so the order is really marked Paid in Supabase (not
+        // localStorage only).
+        await latency(900, 1400)
+        if (offline) throw new ApiError('network', 'You are offline. Connect and try again — your order is saved.')
+        const verification = await verifyPayment(init.reference, { fail })
+        if (verification.status === 'paid') {
+          return { status: 'paid', reference: init.reference, demo: true }
+        }
+        return { status: 'failed', reason: verification.message || 'Payment could not be processed.' }
+      }
+
+      if (init.authorizationUrl) {
+        // Real Paystack: off-site redirect (page unloads; verify on callback).
+        await latency(600, 1000)
+        window.location.href = init.authorizationUrl
+        return { status: 'redirect', demo: false }
+      }
+
+      throw new ApiError('payment', init.message || 'Payment could not be started.')
+    } catch (e) {
+      if (!isApiDown(e)) throw e
+      // Backend unreachable — fall back to the mock below.
+    }
+  }
+
+  // Mock fallback (backend unreachable or no token).
   await latency(900, 1400)
   if (offline) throw new ApiError('network', 'You are offline. Connect and try again — your order is saved.')
   if (fail) {
@@ -643,7 +713,7 @@ export async function processPayment(orderId, method, { fail = false } = {}) {
   }
   saveOrders()
   saveProducts()
-  return { status: 'paid', reference: 'PAY-' + uid('ref').toUpperCase() }
+  return { status: 'paid', reference: 'PAY-' + uid('ref').toUpperCase(), demo: true }
 }
 
 export async function submitContact({ name, email, orderNo, message }) {
@@ -689,16 +759,30 @@ export async function validatePromoCode(code, subtotal = 0) {
 
 /**
  * Start a real Paystack transaction for an order the signed-in customer owns.
- * Returns { authorizationUrl, reference, amountKobo } - redirect the browser
- * to authorizationUrl, then poll verifyPayment(reference).
+ * Returns { authorizationUrl, reference, amountKobo } for a live key, or
+ * { demoMode, reference, amountKobo } when the server is in demo/test mode.
  */
-export async function initPayment(orderId) {
-  return http.post('/payments/initialize', { orderId }, { auth: true })
+export async function initPayment(orderId, method, { fail = false } = {}) {
+  return http.post('/payments/initialize', { orderId, paymentMethod: method, simulateDecline: fail }, { auth: true })
 }
 
-/** Verify a Paystack reference server-side. Marks the order paid once Paystack confirms. */
-export async function verifyPayment(reference) {
-  return http.get(`/payments/verify/${encodeURIComponent(reference)}`, { auth: true })
+/** Verify a Paystack/demo reference server-side. Marks the order paid once confirmed. */
+export async function verifyPayment(reference, { fail = false } = {}) {
+  const qs = fail ? '?simulateDecline=true' : ''
+  return http.get(`/payments/verify/${encodeURIComponent(reference)}${qs}`, { auth: true })
+}
+
+/**
+ * Probe the backend for the payment mode. Returns { configured, demoMode }.
+ * Any failure (backend down, no VITE_API_URL) defaults to demo/test mode.
+ */
+export async function paymentMode() {
+  try {
+    const data = await http.get('/payments/mode')
+    return { configured: data.configured, demoMode: data.demoMode }
+  } catch {
+    return { configured: false, demoMode: true }
+  }
 }
 
 /* ---------------- admin API (real backend only — never the localStorage mock) ----------------
