@@ -1,30 +1,14 @@
 <template>
-  <!-- Mobile-only bottom tab bar (Home, Shop, Cart, Orders).
+  <!-- Mobile-only bottom tab bar (Home, Shop, Orders, Contact).
        Hidden on desktop where AppHeader carries the navigation. -->
   <nav
     aria-label="Mobile"
-    class="fixed inset-x-0 bottom-0 z-30 grid h-16 grid-cols-4 border-t border-border-subtle bg-surface-white/95 backdrop-blur-xl pb-safe md:hidden"
+    class="fixed inset-x-0 bottom-0 z-30 grid h-16 grid-cols-4 border-t border-border-subtle bg-white/95 backdrop-blur-xl pb-safe md:hidden"
   >
     <NavItem to="/" icon="home" label="Home" :exact="true" />
     <NavItem to="/shop" icon="grid" label="Shop" />
-
-    <button
-      type="button"
-      aria-label="Open cart"
-      class="relative flex flex-col items-center justify-center gap-1 text-text-tertiary transition-colors duration-150 hover:text-primary active:scale-95"
-      @click="$emit('open-cart')"
-    >
-      <span class="relative">
-        <Icon name="cart" :size="22" />
-        <span
-          v-if="count > 0"
-          class="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-semibold tabular-nums text-white"
-        >{{ count > 99 ? '99+' : count }}</span>
-      </span>
-      <span class="text-[11px] font-medium">Cart</span>
-    </button>
-
     <NavItem to="/orders" icon="receipt" label="Orders" />
+    <NavItem to="/contact" icon="mail" label="Contact" />
   </nav>
 </template>
 
@@ -32,10 +16,8 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from './Icon.vue'
-import { cartCount } from '../store/cart.js'
 
-const count = computed(() => cartCount.value)
-defineEmits(['open-cart'])
+const route = useRoute()
 
 const NavItem = {
   props: {
@@ -45,7 +27,6 @@ const NavItem = {
     exact: { type: Boolean, default: false },
   },
   setup(props) {
-    const route = useRoute()
     const active = computed(() =>
       props.exact ? route.path === props.to : route.path.startsWith(props.to)
     )

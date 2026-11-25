@@ -1,8 +1,8 @@
 <template>
   <!-- Promotional Hero Banner: SommyBite + SOMMY20 promo -->
-  <section class="px-4 pt-2 pb-3">
+  <section class="pt-2 pb-3">
     <div
-      class="relative w-full rounded-2xl overflow-hidden bg-primary text-on-primary shadow-sm flex flex-col justify-end p-5 min-h-[220px]"
+      class="relative w-full overflow-hidden bg-primary text-on-primary shadow-sm flex flex-col justify-end p-5 min-h-[220px] md:rounded-2xl"
     >
       <img
         :src="heroImage"
