@@ -60,7 +60,7 @@ The project is a simple, responsive website for marketing and selling food produ
 | Image storage        | Supabase Storage        |
 | Data access          | Supabase JavaScript SDK |
 | Payments             | Paystack / Flutterwave  |
-| Frontend hosting     | Vercel                  |
+| Frontend hosting     | Vercel,netlify                  |
 | Backend hosting      | Render                  |
 | Version control      | Git + GitHub            |
 
