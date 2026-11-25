@@ -1,6 +1,6 @@
 <template>
   <!-- Desktop top app bar. Mobile uses the BottomNav tab bar instead. -->
-  <header class="hidden md:block sticky top-0 z-30 border-b border-border-subtle bg-white/95 backdrop-blur-md">
+  <header class="sticky top-0 z-30 border-b border-border-subtle bg-white/95 backdrop-blur-md">
     <div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:gap-4 md:px-6">
       <!-- Brand: text logo + small flame icon -->
       <router-link to="/" class="flex items-center gap-2.5" aria-label="SommyBite home">
@@ -11,6 +11,18 @@
           {{ brand }}
         </span>
       </router-link>
+
+      <!-- Mobile menu toggle (hamburger) -->
+      <button
+        type="button"
+        aria-label="Menu"
+        aria-haspopup="menu"
+        :aria-expanded="menuOpen"
+        class="flex h-10 w-10 items-center justify-center rounded-md text-text-tertiary transition-colors duration-150 hover:bg-gray-100 md:hidden"
+        @click="menuOpen = !menuOpen"
+      >
+        <Icon :name="menuOpen ? 'x' : 'menu'" :size="20" />
+      </button>
 
       <!-- Location -->
       <div class="hidden items-center gap-1.5 text-sm text-text-secondary xl:flex">
@@ -119,6 +131,63 @@
         <SearchField v-model="searchQuery" placeholder="Search the menu" @update:model-value="onSearch" />
       </div>
     </transition>
+
+    <!-- Mobile menu (hamburger) -->
+    <transition name="slide-in-down">
+      <div
+        v-if="menuOpen"
+        role="menu"
+        class="md:hidden border-t border-border-subtle bg-white"
+      >
+        <nav aria-label="Mobile" class="px-4 py-4 space-y-1">
+          <router-link
+            v-for="link in links"
+            :key="link.to"
+            :to="link.to"
+            :aria-current="isActive(link.to) ? 'page' : undefined"
+            class="block rounded-md px-3 py-2.5 text-sm font-medium transition-colors duration-150"
+            :class="isActive(link.to) ? 'text-primary bg-primary/10' : 'text-text-secondary hover:text-text-primary hover:bg-gray-100'"
+            @click="menuOpen = false"
+          >
+            {{ link.label }}
+          </router-link>
+        </nav>
+
+        <div class="border-t border-border-subtle mt-4 pt-4">
+          <div v-if="!auth.user" class="px-4 py-2">
+            <router-link
+              to="/auth"
+              class="block rounded-md px-3 py-2.5 text-sm font-medium text-primary"
+              @click="goAuth(); menuOpen = false"
+            >
+              Login
+            </router-link>
+          </div>
+          <div v-else class="px-4 py-2 space-y-1">
+            <p class="px-3 py-2">
+              <span class="block truncate text-sm font-semibold text-text-primary">{{ auth.user.name }}</span>
+              <span class="block truncate text-sm text-text-secondary">{{ auth.user.email }}</span>
+            </p>
+            <router-link
+              to="/orders"
+              role="menuitem"
+              class="block rounded-md px-3 py-2.5 text-sm text-text-secondary transition-colors duration-150 hover:bg-gray-100"
+              @click="menuOpen = false"
+            >
+              My orders
+            </router-link>
+            <button
+              type="button"
+              role="menuitem"
+              class="block w-full rounded-md px-3 py-2.5 text-left text-sm text-text-secondary transition-colors duration-150 hover:bg-gray-100"
+              @click="signOut(); menuOpen = false"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </header>
 </template>
 
@@ -147,6 +216,7 @@ const brand = BRAND
 const location = LOCATION
 const searchQuery = ref('')
 const searchOpen = ref(false)
+const menuOpen = ref(false)
 const accountOpen = ref(false)
 
 const count = cartCount
@@ -187,6 +257,7 @@ function goAuth() {
 function signOut() {
   logout()
   accountOpen.value = false
+  menuOpen.value = false
   toast({ title: 'Signed out', message: 'See you soon.', duration: 2600 })
   router.push('/')
 }
@@ -194,6 +265,7 @@ function signOut() {
 function onDocClick(e) {
   if (!e.target.closest('[aria-haspopup="menu"]') && !e.target.closest('[role="menu"]')) {
     accountOpen.value = false
+    menuOpen.value = false
   }
 }
 onMounted(() => document.addEventListener('click', onDocClick))
