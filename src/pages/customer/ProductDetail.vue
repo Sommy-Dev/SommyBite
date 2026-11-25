@@ -150,7 +150,7 @@
     <!-- Sticky mobile add-to-cart bar -->
     <div
       v-if="product && !loading && !error"
-      class="fixed inset-x-0 bottom-16 z-30 border-t border-border-subtle bg-white p-3 md:hidden"
+      class="fixed inset-x-0 bottom-20 z-30 border-t border-border-subtle bg-white p-3 md:hidden"
     >
       <div class="flex items-center gap-3">
         <div class="min-w-0 flex-1">
