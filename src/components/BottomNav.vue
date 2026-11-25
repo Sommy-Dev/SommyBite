@@ -3,14 +3,35 @@
        Hidden on desktop where AppHeader carries the navigation. -->
   <nav
     aria-label="Mobile"
-    class="fixed bottom-0 left-0 right-0 z-50 grid h-16 grid-cols-4 border-t border-border-subtle bg-white md:hidden"
+    class="fixed bottom-0 left-0 right-0 z-50 grid h-16 grid-cols-4 border-t border-gray-200 bg-white md:hidden"
   >
-    <NavItem v-for="item in items" :key="item.to" :item="item" />
+    <router-link
+      v-for="item in items"
+      :key="item.to"
+      :to="item.to"
+      :aria-current="isActive(item) ? 'page' : undefined"
+      class="flex flex-col items-center justify-center gap-1 transition-colors duration-150"
+      :class="isActive(item) ? 'text-orange-700 font-semibold' : 'text-gray-600 hover:text-orange-700'"
+    >
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="shrink-0"
+      >
+        <path :d="ICONS[item.icon]" />
+      </svg>
+      <span class="text-[11px] font-medium">{{ item.label }}</span>
+    </router-link>
   </nav>
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
@@ -29,40 +50,7 @@ const items = [
   { to: '/contact', label: 'Contact', icon: 'mail' },
 ]
 
-const NavItem = {
-  props: {
-    item: { type: Object, required: true },
-  },
-  setup(props) {
-    const active = computed(() =>
-      props.item.exact ? route.path === props.item.to : route.path.startsWith(props.item.to)
-    )
-    const iconPath = computed(() => ICONS[props.item.icon])
-    return { active, iconPath }
-  },
-  template: `
-    <router-link
-      :to="item.to"
-      :aria-current="active ? 'page' : undefined"
-      class="flex flex-col items-center justify-center gap-1 transition-colors duration-150"
-      :class="active ? 'text-orange-700 font-semibold' : 'text-gray-600 hover:text-orange-700'"
-    >
-      <svg
-        v-if="iconPath"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class="shrink-0"
-      >
-        <path :d="iconPath" />
-      </svg>
-      <span class="text-[11px] font-medium">{{ label }}</span>
-    </router-link>
-  `,
+function isActive(item) {
+  return item.exact ? route.path === item.to : route.path.startsWith(item.to)
 }
 </script>
