@@ -92,9 +92,9 @@
           v-if="mode === 'login'"
           type="button"
           class="font-semibold text-orange-700 underline-offset-2 hover:underline"
-          @click="resetOpen = true"
+          @click="router.push('/forgot-password')"
         >
-          Reset your password
+          Forgot password?
         </button>
         <span v-else class="text-text-tertiary" />
         <p class="text-text-secondary">
@@ -127,33 +127,6 @@
         </div>
       </dl>
     </div>
-
-    <!-- Password reset -->
-    <Modal v-model="resetOpen" title="Reset your password">
-      <p class="text-sm leading-relaxed text-text-secondary">
-        Enter the email on your account and we will send a reset link.
-      </p>
-      <form class="mt-4 space-y-4" @submit.prevent="requestReset">
-        <Input
-          v-model="resetEmail"
-          label="Email"
-          type="email"
-          autocomplete="email"
-          placeholder="you@example.com"
-          :error="resetError"
-          required
-        />
-        <Button variant="primary" class="w-full" :loading="resetBusy" loading-label="Sending link">
-          Send reset link
-        </Button>
-      </form>
-      <div v-if="resetSent" class="mt-4 rounded-md bg-emerald-50 p-4">
-        <p class="flex items-start gap-2 text-sm font-medium text-emerald-800">
-          <Icon name="check-circle" :size="18" class="mt-0.5 shrink-0" />
-          Reset link sent. Check your inbox for the next step.
-        </p>
-      </div>
-    </Modal>
   </div>
 </template>
 
@@ -163,11 +136,9 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '../../components/Icon.vue'
 import Button from '../../components/Button.vue'
 import Input from '../../components/Input.vue'
-import Modal from '../../components/Modal.vue'
 import { login, register } from '../../store/auth.js'
 import { supabaseConfigured } from '../../lib/supabase.js'
 import { toast } from '../../store/toast.js'
-import * as api from '../../lib/api.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -178,12 +149,6 @@ const errors = reactive({})
 const touched = reactive({})
 const formError = ref('')
 const busy = ref(false)
-
-const resetOpen = ref(false)
-const resetEmail = ref('')
-const resetError = ref('')
-const resetBusy = ref(false)
-const resetSent = ref(false)
 
 const rules = {
   name: (v) => (mode.value === 'register' && v.trim().length < 2 ? 'Enter your full name.' : ''),
@@ -247,24 +212,6 @@ async function submit() {
     formError.value = e.message
   } finally {
     busy.value = false
-  }
-}
-
-async function requestReset() {
-  resetError.value = ''
-  resetSent.value = false
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resetEmail.value.trim())) {
-    resetError.value = 'Enter a valid email address.'
-    return
-  }
-  resetBusy.value = true
-  try {
-    await api.requestPasswordReset(resetEmail.value)
-    resetSent.value = true
-  } catch {
-    resetError.value = 'Something went wrong. Try again in a moment.'
-  } finally {
-    resetBusy.value = false
   }
 }
 </script>
